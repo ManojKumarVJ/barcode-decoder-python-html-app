@@ -161,7 +161,7 @@
 
             ws.onopen = function(){
               $message.attr("class", 'label label-success');
-              $message.text('Alive');
+              $message.text('Live');
             };
 
             ws.onmessage = function(ev){
@@ -190,7 +190,7 @@
 
             ws.onclose = function(ev){
               $message.attr("class", 'label label-important');
-              $message.text('Dead');
+              $message.text('Terminated');
             };
 
             ws.onerror = function(ev){
@@ -224,6 +224,7 @@
                 $message.fadeIn("slow");
                 $message.text('Decode Error');
                 $("#out").html("");
+                $("#img").attr("src", "");
               }
 
             });
@@ -310,7 +311,7 @@
 
     ws.onopen = function(){
       $message.attr("class", 'label label-success');
-      $message.text('Alive');
+      $message.text('Live');
     };
 
     ws.onmessage = function(ev){
@@ -339,7 +340,7 @@
 
     ws.onclose = function(ev){
       $message.attr("class", 'label label-important');
-      $message.text('Dead');
+      $message.text('Terminated');
     };
 
     ws.onerror = function(ev){
@@ -373,6 +374,7 @@
         $message.fadeIn("slow");
         $message.text('Decode Error');
         $("#out").html("");
+        $("#img").attr("src", "");
       }
 
     });
