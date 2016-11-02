@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>tornado WebSocket example</title>
+  <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.no-icons.min.css" rel="stylesheet">
+  <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Barcode Image Decoder</h1>
+    <hr>
+      Decoder Status : <span id="message"></span>
+    <hr>
+
+      <div class="row">
+        <div class="span4">
+          <h4>Select an image file :</h4>
+          <input type="file" id="asd"/>
+        </div>
+        <div class="span4">
+          <h4>Slected Image :</h4>
+          <img id="img" src="" style="width:100%; height:100%;"></img>
+        </div>
+        <div class="span4">
+          <h4>Decoded Output :</h4>
+          <h5 id="out"></h5>
+        </div>
+      </div>
+      <div class="row">
+
+      </div>
+  <script>
+    var ws = new WebSocket('ws://localhost:8888/ws');
+    var $message = $('#message');
+    var out = document.getElementById('out');
+
+    ws.onopen = function(){
+      $message.attr("class", 'label label-success');
+      $message.text('Alive');
+    };
+    ws.onmessage = function(ev){
+      $message.attr("class", 'label label-info');
+      $message.hide();
+      $message.fadeIn("slow");
+      $message.text('Decoded');
+      //alert(ev.data);
+      var json = JSON.parse(ev.data);
+      //alert(json.type+" "+json.value);
+      out.innerHTML= 'Type : '+json.type+'<br>Value : '+json.value;
+    };
+    ws.onclose = function(ev){
+      $message.attr("class", 'label label-important');
+      $message.text('Dead');
+    };
+    ws.onerror = function(ev){
+      $message.attr("class", 'label label-warning');
+      $message.text('error occurred');
+    };
+    File.prototype.convertToBase64 = function(callback){
+              var reader = new FileReader();
+              reader.onload = function(e) {
+                   callback(e.target.result)
+              };
+              reader.onerror = function(e) {
+                   callback(null);
+              };
+              reader.readAsDataURL(this);
+      };
+
+      $("#asd").on('change',function(){
+        var selectedFile = this.files[0];
+        selectedFile.convertToBase64(function(base64){
+             document.getElementById('img').src=base64;
+             ws.send(base64);
+        })
+      });
+  </script>
+</body>
+</html>
