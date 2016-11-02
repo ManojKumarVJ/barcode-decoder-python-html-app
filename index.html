@@ -1,16 +1,32 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>tornado WebSocket example</title>
+  <title>Barcode Decoder</title>
   <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.no-icons.min.css" rel="stylesheet">
   <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+  <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js"></script>
 </head>
 <body>
+  <style>
+    #error{
+      width : 100%;
+      min-height: 50px;
+      color :rgb(150, 100, 180);
+      font-family: "Lucida Console", Monaco, monospace;
+      box-shadow: 0px 0px 5px black;
+      background: rgba(200,150,10,0.05);
+      border-radius: 5px;
+    }
+    hr{
+      height : 3px;
+      background-color: rgba(255, 100, 0, 0.8);
+    }
+  </style>
   <div class="container">
     <h1>Barcode Image Decoder</h1>
-    <hr>
+    <hr class="h">
       Decoder Status : <span id="message"></span>
-    <hr>
+    <hr class="h">
 
       <div class="row">
         <div class="span4">
@@ -19,61 +35,348 @@
         </div>
         <div class="span4">
           <h4>Slected Image :</h4>
-          <img id="img" src="" style="width:100%; height:100%;"></img>
+          <img id="img" style="width:90%; height:90%; margin : 20px;"></img>
         </div>
         <div class="span4">
           <h4>Decoded Output :</h4>
           <h5 id="out"></h5>
         </div>
       </div>
+      <hr>
       <div class="row">
-
+        <div class="span6">
+          <h4>Decode Error :</h4>
+          <h5 id="error"></h5>
+        </div>
       </div>
+      <hr>
+      <div class="row">
+        <div class="span12">
+          <h3>Documentation</h3>
+          <h5>Python Script: app.py</h5>
+          <pre class="prettyprint lang-python">
+            from tornado import websocket, web, ioloop
+            import json
+            import base64
+            import zbar
+            from PIL import Image
+            import urllib, cStringIO
+
+            cl = []
+
+            class IndexHandler(web.RequestHandler):
+                def get(self):
+                    self.render("index.html")
+
+            class SocketHandler(websocket.WebSocketHandler):
+                def check_origin(self, origin):
+                    return True
+
+                def open(self):
+                    if self not in cl:
+                        cl.append(self)
+
+                def on_message(self, msg):
+                    #check for base64 encode
+                    if msg.find('base64') != -1:
+                        #pass DataURI to barcode function
+                        out = self.barcode(msg)
+                        #check for return data type
+                        if type(out).__name__ == "tuple":
+                            print "Decoded: Type ",out[0]," Data ",out[1]
+                            jn = {"type": str(out[0]),"value":out[1]}
+                            self.write_message(json.dumps(jn))
+                        else:
+                            print out
+                            self.write_message(str(out))
+
+                def on_close(self):
+                    if self in cl:
+                        cl.remove(self)
+
+                def barcode(self, msg):
+                    #read DataURI as file
+                    file = cStringIO.StringIO(urllib.urlopen(msg).read())
+
+                    # create a reader
+                    scanner = zbar.ImageScanner()
+
+                    # configure the reader
+                    scanner.parse_config('enable')
+
+                    # obtain image data
+                    pil = Image.open(file).convert('L')
+                    width, height = pil.size
+                    raw = pil.tobytes()
+                    #pil.show()
+                    # wrap image data
+                    image = zbar.Image(width, height, 'Y800', raw)
+
+                    # scan the image for barcodes
+                    istrue = scanner.scan(image)
+                    if istrue == 1:
+                    # extract results
+                        for symbol in image:
+                            # do something useful with results
+                            print 'decoded', symbol.type, 'symbol', '"%s"' % symbol.data
+                        # clean up
+                        del(image)
+
+                        return symbol.type, symbol.data
+                    else:
+                        return "Unknown Image : Please choose an image file with clear Barcode"
+
+            class ApiHandler(web.RequestHandler):
+
+                @web.asynchronous
+                def get(self, *args):
+                    self.finish()
+                    id = self.get_argument("id")
+                    value = self.get_argument("value")
+                    data = {"id": id, "value" : value}
+                    data = json.dumps(data)
+                    for c in cl:
+                        c.write_message(data)
+
+                @web.asynchronous
+                def post(self):
+                    pass
+
+            app = web.Application([
+                (r'/', IndexHandler),
+                (r'/ws', SocketHandler),
+                (r'/api', ApiHandler),
+                (r'/(favicon.ico)', web.StaticFileHandler, {'path': '../'}),
+            ])
+
+
+            if __name__ == '__main__':
+                app.listen(8888)
+                ioloop.IOLoop.instance().start()
+          </pre>
+          <h5> JavaScript :</h5>
+          <pre class="prettyprint lang-javascript">
+            var ws = new WebSocket('ws://localhost:8888/ws');
+            var $message = $('#message');
+
+            ws.onopen = function(){
+              $message.attr("class", 'label label-success');
+              $message.text('Alive');
+            };
+
+            ws.onmessage = function(ev){
+              var json;
+              try {
+                json = JSON.parse(ev.data);
+                var s = "Type: "+json.type+" Value:"+json.value;
+                $("#out").html(s)
+                console.log(s);
+                $message.attr("class", 'label label-info');
+                $message.hide();
+                $message.fadeIn("slow");
+                $message.text('Decode Success');
+                $("#error").html("");
+              } catch (e) {
+                console.log(e);
+                $("#error").html(ev.data)
+                console.log(s);
+                $message.attr("class", 'label label-error');
+                $message.hide();
+                $message.fadeIn("slow");
+                $message.text('Decode Error');
+                $("#out").html("");
+              }
+            };
+
+            ws.onclose = function(ev){
+              $message.attr("class", 'label label-important');
+              $message.text('Dead');
+            };
+
+            ws.onerror = function(ev){
+              $message.attr("class", 'label label-warning');
+              $message.text('error occurred');
+            };
+
+            File.prototype.convertToBase64 = function(callback){
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                     callback(e.target.result)
+                };
+                reader.onerror = function(e) {
+                     callback(null);
+                };
+                reader.readAsDataURL(this);
+            };
+
+            $("#asd").on('change',function(){
+              var selectedFile = this.files[0];
+              var ext = selectedFile.name.split('.').pop().toLowerCase();
+              if(ext == "jpg" || ext == "jpeg" || ext == "png"){
+                  selectedFile.convertToBase64(function(base64){
+                       document.getElementById('img').src=base64;
+                       ws.send(base64);
+                  });
+              }else{
+                $("#error").html("Unknown file format : Please choose an image file (.jpg/.jpeg/.png) only")
+                $message.attr("class", 'label label-error');
+                $message.hide();
+                $message.fadeIn("slow");
+                $message.text('Decode Error');
+                $("#out").html("");
+              }
+
+            });
+          </pre>
+          <h5>HTML Content : index.html</h5>
+          <pre>
+          <xmp class="prettyprint lang-html" style="margin:-50px;">
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Barcode Decoder</title>
+              <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.no-icons.min.css" rel="stylesheet">
+              <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+              <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js"></script>
+            </head>
+            <body>
+              <style>
+                #error{
+                  width : 100%;
+                  min-height: 50px;
+                  color :rgb(150, 100, 180);
+                  font-family: "Lucida Console", Monaco, monospace;
+                  box-shadow: 0px 0px 5px black;
+                  background: rgba(200,150,10,0.05);
+                  border-radius: 5px;
+                }
+                hr{
+                  height : 3px;
+                  background-color: rgba(255, 100, 0, 0.8);
+                }
+              </style>
+              <div class="container">
+                <h1>Barcode Image Decoder</h1>
+                <hr class="h">
+                  Decoder Status : <span id="message"></span>
+                <hr class="h">
+
+                  <div class="row">
+                    <div class="span4">
+                      <h4>Select an image file :</h4>
+                      <input type="file" id="asd"/>
+                    </div>
+                    <div class="span4">
+                      <h4>Slected Image :</h4>
+                      <img id="img" style="width:90%; height:90%; margin : 20px;"></img>
+                    </div>
+                    <div class="span4">
+                      <h4>Decoded Output :</h4>
+                      <h5 id="out"></h5>
+                    </div>
+                  </div>
+                  <hr>
+                  <div class="row">
+                    <div class="span6">
+                      <h4>Decode Error :</h4>
+                      <h5 id="error"></h5>
+                    </div>
+                  </div>
+                </div>
+              </body>
+              </html>
+          </xmp>
+        </pre>
+        </div>
+      </div>
+      <hr>
+      <div class="row">
+        <div class="span6">
+          <h4>Download Source Code:</h4>
+          <button class="btn btn-primary" onclick='window.location.href="Barcode_Decoder_SourceCode.zip"' target="parent" download> Source Code</button>
+        </div>
+      </div>
+      <hr>
+      <div class="row">
+        <div class="span12" style="font-family:calibri;">
+          <center><h5>Design & Developed by: Team Manoj Kumar V J</h5>
+          <h5>THE LOVE & THE PASSION</h5></center>
+      </div>
+      <br/>
+    </div>
   <script>
-    var ws = new WebSocket('ws://localhost:8888/ws');
+    var ws = new WebSocket('ws://10.4.0.99:8888/ws');
     var $message = $('#message');
-    var out = document.getElementById('out');
 
     ws.onopen = function(){
       $message.attr("class", 'label label-success');
       $message.text('Alive');
     };
+
     ws.onmessage = function(ev){
-      $message.attr("class", 'label label-info');
-      $message.hide();
-      $message.fadeIn("slow");
-      $message.text('Decoded');
-      //alert(ev.data);
-      var json = JSON.parse(ev.data);
-      //alert(json.type+" "+json.value);
-      out.innerHTML= 'Type : '+json.type+'<br>Value : '+json.value;
+      var json;
+      try {
+        json = JSON.parse(ev.data);
+        var s = "Type: "+json.type+" <br>Value:"+json.value;
+        $("#out").html(s)
+        console.log(s);
+        $message.attr("class", 'label label-info');
+        $message.hide();
+        $message.fadeIn("slow");
+        $message.text('Decode Success');
+          $("#error").html("");
+      } catch (e) {
+        console.log(e);
+        $("#error").html(ev.data)
+        console.log(s);
+        $message.attr("class", 'label label-error');
+        $message.hide();
+        $message.fadeIn("slow");
+        $message.text('Decode Error');
+        $("#out").html("");
+      }
     };
+
     ws.onclose = function(ev){
       $message.attr("class", 'label label-important');
       $message.text('Dead');
     };
+
     ws.onerror = function(ev){
       $message.attr("class", 'label label-warning');
       $message.text('error occurred');
     };
-    File.prototype.convertToBase64 = function(callback){
-              var reader = new FileReader();
-              reader.onload = function(e) {
-                   callback(e.target.result)
-              };
-              reader.onerror = function(e) {
-                   callback(null);
-              };
-              reader.readAsDataURL(this);
-      };
 
-      $("#asd").on('change',function(){
-        var selectedFile = this.files[0];
-        selectedFile.convertToBase64(function(base64){
-             document.getElementById('img').src=base64;
-             ws.send(base64);
-        })
-      });
+    File.prototype.convertToBase64 = function(callback){
+        var reader = new FileReader();
+        reader.onload = function(e) {
+             callback(e.target.result)
+        };
+        reader.onerror = function(e) {
+             callback(null);
+        };
+        reader.readAsDataURL(this);
+    };
+
+    $("#asd").on('change',function(){
+      var selectedFile = this.files[0];
+      var ext = selectedFile.name.split('.').pop().toLowerCase();
+      if(ext == "jpg" || ext == "jpeg" || ext == "png"){
+          selectedFile.convertToBase64(function(base64){
+               document.getElementById('img').src=base64;
+               ws.send(base64);
+          });
+      }else{
+        $("#error").html("Unknown file format : Please choose an image file (.jpg/.jpeg/.png) only")
+        $message.attr("class", 'label label-error');
+        $message.hide();
+        $message.fadeIn("slow");
+        $message.text('Decode Error');
+        $("#out").html("");
+      }
+
+    });
   </script>
+
 </body>
 </html>
