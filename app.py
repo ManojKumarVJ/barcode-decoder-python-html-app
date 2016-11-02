@@ -67,7 +67,7 @@ class SocketHandler(websocket.WebSocketHandler):
 
             return symbol.type, symbol.data
         else:
-            return "Unrecognised Image : Sytem couldn't detect clear Barcode in the image selected"
+            return "Unrecognised Image : Sytem couldn't detect recognisable Barcode in the selected image"
 
 
 app = web.Application([
