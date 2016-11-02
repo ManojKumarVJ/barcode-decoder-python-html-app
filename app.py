@@ -20,27 +20,27 @@ class SocketHandler(websocket.WebSocketHandler):
             cl.append(self)
 
     def on_message(self, msg):
-        #print msg
+        #check for base64 encode
         if msg.find('base64') != -1:
-            if msg.find('png') != -1:
-                frm = "png"
-            elif msg.find('jpg') != -1:
-                frm = "png"
-            elif msg.find('gif') != -1:
-                frm = "gif"
+            #pass DataURI to barcode function
             out = self.barcode(msg)
-            print "Decoded: Type ",out[0]," Data ",out[1]
-            jn = {"type": str(out[0]),"value":out[1]}
-            self.write_message(json.dumps(jn))
-
+            #check for return data type
+            if type(out).__name__ == "tuple":
+                print "Decoded: Type ",out[0]," Data ",out[1]
+                jn = {"type": str(out[0]),"value":out[1]}
+                self.write_message(json.dumps(jn))
+            else:
+                print out
+                self.write_message(str(out))
 
     def on_close(self):
         if self in cl:
             cl.remove(self)
 
     def barcode(self, msg):
-
+        #read DataURI as file
         file = cStringIO.StringIO(urllib.urlopen(msg).read())
+
         # create a reader
         scanner = zbar.ImageScanner()
 
@@ -56,39 +56,24 @@ class SocketHandler(websocket.WebSocketHandler):
         image = zbar.Image(width, height, 'Y800', raw)
 
         # scan the image for barcodes
-        scanner.scan(image)
-
+        istrue = scanner.scan(image)
+        if istrue == 1:
         # extract results
-        for symbol in image:
-            # do something useful with results
-            print 'decoded', symbol.type, 'symbol', '"%s"' % symbol.data
-        # clean up
-        del(image)
+            for symbol in image:
+                # do something useful with results
+                print 'decoded', symbol.type, 'symbol', '"%s"' % symbol.data
+            # clean up
+            del(image)
 
-        return symbol.type, symbol.data
+            return symbol.type, symbol.data
+        else:
+            return "Unrecognised Image : Sytem couldn't detect clear Barcode in the image selected"
 
-class ApiHandler(web.RequestHandler):
-
-    @web.asynchronous
-    def get(self, *args):
-        self.finish()
-        id = self.get_argument("id")
-        value = self.get_argument("value")
-        data = {"id": id, "value" : value}
-        data = json.dumps(data)
-        for c in cl:
-            c.write_message(data)
-
-    @web.asynchronous
-    def post(self):
-        pass
 
 app = web.Application([
     (r'/', IndexHandler),
     (r'/ws', SocketHandler),
-    (r'/api', ApiHandler),
     (r'/(favicon.ico)', web.StaticFileHandler, {'path': '../'}),
-    (r'/(rest_api_example.png)', web.StaticFileHandler, {'path': './'}),
 ])
 
 
